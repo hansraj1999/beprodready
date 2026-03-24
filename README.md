@@ -1,468 +1,135 @@
-# Product: SysDesignr  
-**Repo Name:** beprodready
+# Archai
 
----
+Minimal production-oriented monorepo: **React + TypeScript (Vite)** frontend, **FastAPI** backend, optional **Docker** orchestration.
 
-## 1. 🎯 Vision
+## Layout
 
-Build the first platform that simulates real-world system design experience—not just diagramming.
+| Path        | Role                                      |
+| ----------- | ----------------------------------------- |
+| `frontend/` | Vite SPA, nginx image for container runs  |
+| `backend/`  | FastAPI app (`uvicorn`), JSON API         |
+| `infra/`    | Placeholder for IaC / K8s / prod notes    |
 
-Users don’t just design systems — they **build, defend, break, fix, and evolve them**.
+API routes live under **`/api/v1`**.
 
----
+**Firebase auth:** Send `Authorization: Bearer <Firebase ID token>` for protected routes. The backend verifies the JWT in middleware (for `/api/v1/graphs/*` and `GET /api/v1/users/me`), then `get_current_user` loads or creates a `users` row keyed by Firebase UID.
 
-## 2. 🧠 Core Positioning
+**AI feature gating:** `free` users are limited to **`FREE_AI_CALLS_MONTHLY_LIMIT`** successful AI operations per **UTC calendar month** (counted in `usage_events` with action `ai.call`). **`pro`** users with a non-expired `valid_till` and **`lifetime`** users are unlimited. Enforced via FastAPI dependency `require_ai_quota` on `POST /evaluate`, `POST /interview/start`, `POST /interview/respond`, `POST /simulate/incident`, and `POST /generate-system`.
 
-### ❌ Existing Tools
+| Method | Path | Auth | Description |
+| ------ | ---- | ---- | ----------- |
+| `POST` | `/api/v1/users` | No | Create a user without Firebase (local / tests) |
+| `GET` | `/api/v1/users/me` | Yes | Current user (DB row, auto-provisioned from token) |
+| `POST` | `/api/v1/graphs` | Yes | Create a graph for the authenticated user (`name`, `nodes`, `edges`, …) |
+| `GET` | `/api/v1/graphs` | Yes | List your graphs (summary: id, name, updated_at) |
+| `GET` | `/api/v1/graphs/{id}` | Yes | Fetch your graph (usage logged) |
+| `PUT` | `/api/v1/graphs/{id}` | Yes | Update your graph |
+| `DELETE` | `/api/v1/graphs/{id}` | Yes | Delete your graph |
+| `POST` | `/api/v1/payment/create-order` | Yes | Create a Razorpay order (`{"plan":"pro"|"lifetime"}`); amounts are **server-defined** (paise) |
+| `POST` | `/api/v1/payment/webhook` | No (Razorpay HMAC) | Webhook: verifies `X-Razorpay-Signature`, applies `payment.captured` → updates `users.plan` / `valid_till` |
+| `POST` | `/api/v1/evaluate` | Yes | System design graph evaluation: rules + LLM → `score`, `strengths`, `weaknesses`, `questions` |
+| `POST` | `/api/v1/interview/start` | Yes | Start AI interview; returns `session_id`, opening `message`, `first_question`, `turn` |
+| `POST` | `/api/v1/interview/respond` | Yes | Send answer + `session_id`; returns structured evaluation, `follow_up_questions`, `next_question`, `turn` |
+| `POST` | `/api/v1/simulate/incident` | Yes | Weak-component scan + LLM (or stub) → `incident`, `impact`, `suggested_fixes` |
+| `POST` | `/api/v1/generate-system` | Yes | Text prompt → graph JSON (`nodes`, `edges`) for the canvas; OpenAI when configured, else stub |
 
-- Static diagrams  
-- Generic AI feedback  
-- Passive learning  
+Set **`FIREBASE_CREDENTIALS_JSON`** to the full service account JSON string (recommended on Cloud Run / Secret Manager), or **`FIREBASE_CREDENTIALS_PATH`** to a file (local dev). If both are unset, Application Default Credentials are used (e.g. `GOOGLE_APPLICATION_CREDENTIALS` on GCP). See `backend/.env.example`.
 
-### ✅ This Product
+**Razorpay:** configure `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET` in `.env`. Point the Razorpay dashboard webhook URL to `https://<host>/api/v1/payment/webhook` and subscribe to **`payment.captured`**. Tune `RAZORPAY_*_AMOUNT_PAISE` and `RAZORPAY_PRO_VALIDITY_DAYS` to match your catalog.
 
-- Dynamic simulation  
-- Adversarial AI  
-- Real-world scenarios  
+## Prerequisites
 
-👉 **Positioning:** “Figma + LeetCode + Real Production Experience”
+- **Local dev:** Node.js 22+, Python 3.12+ (3.12+ recommended; use **SQLAlchemy 2.0.44+** on 3.14), `pip`, **PostgreSQL 16+**
+- **Docker:** Docker Engine + Docker Compose v2
 
----
+## Local development
 
-## 3. 👤 Target Users
+### One command (Postgres in Docker + API + Vite)
 
-- Mid–Senior Engineers (2–10 years experience)  
-- Engineers preparing for FAANG / high-scale interviews  
-- Engineers transitioning to Staff / Architect roles  
+From the **repository root**:
 
----
+- **Windows:** `.\dev-local.bat` or `.\scripts\dev-local.ps1`
+- **macOS / Linux / Git Bash:** `chmod +x scripts/dev-local.sh && ./scripts/dev-local.sh`
 
-## 4. 🧩 Product Modules
+This starts `postgres` via Docker Compose, creates `backend/.env` and `frontend/.env` from examples if missing, sets up the Python venv, runs `alembic upgrade head`, opens the API in a **new terminal** (Windows) or background (Unix), then runs `npm run dev`.
 
-### 4.1 🎨 Visual System Design Canvas (Foundation)
-
-**Features:**
-
-- Drag-and-drop components:
-  - API Gateway  
-  - Load Balancer  
-  - Services  
-  - Databases (SQL / NoSQL)  
-  - Cache  
-  - Queue  
-  - CDN  
-- Connect nodes visually  
-- Configuration options:
-  - Replication  
-  - Sharding  
-  - Consistency models  
-- Zoom, pan, edit interactions  
-
----
-
-### 4.2 🧠 Graph Engine
-
-- Stores architecture as a graph structure  
-- Validates topology  
-- Acts as input for AI + simulation engines  
-
----
-
-### 4.3 🤖 AI Evaluation Engine
-
-**Outputs:**
-
-- Score (0–100)  
-- Strengths  
-- Weaknesses  
-- Suggestions  
-
-**Evaluation Dimensions:**
-
-- Scalability  
-- Availability  
-- Latency  
-- Cost  
-- Consistency  
-
----
-
-### 4.4 🔥 AI Interview Mode (Core Differentiator)
-
-**Flow:**
-
-1. AI asks system design question  
-2. User responds  
-3. AI evaluates depth  
-4. AI drills deeper with follow-ups  
-
-**Features:**
-
-- Adaptive questioning  
-- Context-aware probing  
-- Multi-turn conversations  
-
----
-
-### 4.5 ⚔️ Trade-Off Battle Mode
-
-**Flow:**
-
-- AI presents 2 architectures  
-- User selects one  
-- User must defend the choice  
-- AI challenges assumptions  
-
-👉 Focus: Decision-making and trade-offs  
-
----
-
-### 4.6 🧪 Real-World Simulation Mode
-
-**Trigger:** User clicks “Run System”
-
-**Simulates:**
-
-- Traffic spikes  
-- Latency issues  
-- Service failures  
-
-**Outputs:**
-
-- Bottlenecks  
-- System breakdown points  
-- Suggested fixes  
-
----
-
-### 4.7 🚨 Production Incident Mode (High Impact)
-
-**Example Scenario:**
-
-- “Redis cluster failed during peak traffic”
-
-**User Actions:**
-
-- Debug system  
-- Modify architecture  
-- Respond in real-time  
-
-👉 Dynamic AI-driven incident response loop  
-
----
-
-### 4.8 ⏱️ Interview Pressure Mode
-
-- Timer-based constraints  
-- Interruptions during explanation  
-- AI pressure prompts (e.g., “You’re over-engineering. Simplify.”)  
-
----
-
-### 4.9 🧬 Evolution Timeline
-
-- Visualize system evolution:
-  - v1: Monolith  
-  - v2: Microservices  
-  - v3: Distributed system  
-- Interactive timeline slider  
-
----
-
-### 4.10 🔍 Architecture Diff View
-
-- Compare user design vs ideal design  
-- Highlights:
-  - Missing components  
-  - Inefficient choices  
-  - Better alternatives  
-
----
-
-### 4.11 💰 Cost Estimation Engine
-
-- Infrastructure cost breakdown  
-- Cloud pricing estimation  
-
----
-
-### 4.12 🤝 Team Collaboration Mode
-
-- Multi-user canvas  
-- Real-time editing  
-- Shared sessions  
-
----
-
-### 4.13 ⚡ AI System Generator
-
-**Input:** “Design Uber backend”
-
-**Output:** Initial architecture draft  
-
-- User refines and iterates  
-
----
-
-### 4.14 📚 Prebuilt Design Library
-
-- Examples:
-  - URL Shortener  
-  - Instagram  
-  - Uber  
-  - Netflix  
-- Editable and forkable templates  
-
----
-
-### 4.15 📈 Learning & Analytics
-
-- Skill scoring  
-- Weak area detection  
-- Progress tracking  
-
----
-
-### 4.16 🧠 Thinking Score (Moat)
-
-Instead of binary correctness:
-
-- Evaluate depth of reasoning  
-- Trade-off awareness  
-- Clarity of explanation  
-
----
-
-### 4.17 🔗 Design → Code Bridge
-
-Convert architecture into:
-
-- API skeletons  
-- Database schemas  
-- Event-driven flows  
-
----
-
-### 4.18 🔐 Authentication
-
-- Firebase Authentication  
-
----
-
-### 4.19 💳 Payments
-
-- Razorpay integration  
-
----
-
-### 4.20 🔒 Access Control
-
-- Free vs Paid feature gating  
-- Usage limits  
-
----
-
-## 5. 🧑‍💻 User Flows
-
-### Login Flow
-
-- Firebase login  
-- Token verification  
-- User creation  
-
-### Design Flow
-
-- Build system on canvas  
-- Save graph  
-
-### Evaluation Flow
-
-- Trigger evaluation  
-- Receive AI feedback  
-
-### Payment Flow
-
-- Upgrade plan  
-- Razorpay checkout  
-- Webhook updates subscription  
-
----
-
-## 6. 🗄️ Database Design
-
-### Users
-
-- id: TEXT  
-- email: TEXT  
-- plan: TEXT  
-- valid_till: TIMESTAMP  
-
-### Graphs
-
-- id: UUID  
-- user_id: TEXT  
-- graph_json: JSONB  
-
-### Usage
-
-- user_id: TEXT  
-- ai_calls: INT  
-
----
-
-## 7. 🔌 API Design
-
-### Graph APIs
-
-- POST /graphs  
-- GET /graphs/{id}  
-
-### AI APIs
-
-- POST /evaluate  
-- POST /interview/start  
-- POST /interview/respond  
-
-### Payment APIs
-
-- POST /payment/create-order  
-- POST /payment/webhook  
-
----
-
-## 8. 🤖 AI Architecture
-
-**Layers:**
-
-- Graph Parser  
-- Rule Engine  
-- LLM Layer  
-- Scoring Engine  
-
----
-
-## 9. 🏗️ System Architecture
-
-### Frontend
-
-- React + TypeScript  
-- React Flow  
-
-### Backend
-
-- FastAPI  
+- Use **`-SkipPostgres`** on Windows if you already run Postgres locally and `DATABASE_URL` in `backend/.env` points to it.
+- On Unix, set **`SKIP_POSTGRES=1`** for the same behavior.
 
 ### Database
 
-- PostgreSQL  
+Run PostgreSQL locally (or use Docker only). Default URL in `backend/.env.example` assumes user/password/db `archai` on `localhost:5432`.
 
-### Cache
+### Backend
 
-- Redis  
+```bash
+cd backend
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Unix: source .venv/bin/activate
+pip install -r requirements.txt
+copy .env.example .env   # Unix: cp .env.example .env
+alembic upgrade head
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-### Infrastructure
+Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) (OpenAPI) when `ENV` is not `production`.
 
-- Docker + Kubernetes  
-- AWS / GCP  
+### Frontend
 
----
+```bash
+cd frontend
+copy .env.example .env   # Unix: cp .env.example .env
+npm install
+npm run dev
+```
 
-## 10. 🔐 Security
+Open [http://localhost:5173](http://localhost:5173). The dev server proxies **`/api`** to `VITE_API_PROXY_TARGET` (default `http://127.0.0.1:8000`).
 
-- JWT validation  
-- Rate limiting  
-- Webhook verification  
+### Environment files
 
----
+- `backend/.env.example` — `DATABASE_URL`, CORS, `ENV`, logging, Razorpay, **evaluation** (`EVALUATION_LLM_PROVIDER`, `OPENAI_*`).
 
-## 11. 💰 Monetization
+**Graph evaluation:** default `EVALUATION_LLM_PROVIDER=stub` needs no API key. For OpenAI, set `EVALUATION_LLM_PROVIDER=openai` and `OPENAI_API_KEY`. Swap-in providers by implementing `LLMProvider` and extending `get_llm_provider()` in `app/evaluation/providers/factory.py`.
 
-### Free Tier
+**Interview mode** uses the same `EVALUATION_LLM_PROVIDER` / `OPENAI_*` settings and `app/llm/openai_json.py` for chat-style JSON. Conversation state lives in Postgres (`interview_sessions.messages` JSONB). Run `alembic upgrade head` after pulling migration `004_interview`.
 
-- Limited AI usage  
-- Limited designs  
+**Incident simulation** (`POST /api/v1/simulate/incident`) runs `app/simulation/weak_components.py` (reuses graph rule signals + queue/app/HA heuristics), then either the OpenAI JSON path or a **rule-based stub** scenario (Redis, queue, DB, ingress, or generic app failure) matching the weakest signals.
+- `frontend/.env.example` — optional `VITE_API_URL`, proxy target, and **Firebase web config** (`VITE_FIREBASE_*`) for authenticated API calls.
 
-### Pro Tier
+## Docker (full stack)
 
-- Unlimited AI usage  
-- Full feature access  
+From the repository root:
 
----
+```bash
+docker compose up --build
+```
 
-## 12. 📊 Metrics
+- **Frontend + API gateway (nginx):** [http://localhost:8080](http://localhost:8080) — static UI and `/api/*` proxied to the backend container.
+- **Backend (direct):** [http://localhost:8000](http://localhost:8000)
 
-- Daily Active Users (DAU)  
-- Retention  
-- AI interactions  
-- Conversion rate  
+Compose starts **PostgreSQL**, runs **`alembic upgrade head`** in the backend entrypoint, then serves the API. Set `CORS_ORIGINS` to your real web origin(s) in production and use `ENV=production` to hide OpenAPI UIs.
 
----
+### Verifying builds (use Docker)
 
-## 13. 🛣️ Roadmap
+When checking that the stack **builds cleanly** (especially after dependency or TypeScript changes), treat **Docker** as the source of truth:
 
-### Phase 1 (MVP)
+```bash
+docker compose build
+# or
+docker compose up --build
+```
 
-- Canvas  
-- Save/load  
-- AI evaluation  
-- Authentication  
+That runs the same **frontend** path as production (`npm ci` when `package-lock.json` exists, then `tsc` + `vite build`) and the **backend** image build on Linux. Local `npm` / `python` on Windows or macOS can differ; **do not rely on host-only `tsc` or `pip` as the final gate**—confirm with Compose builds.
 
-### Phase 2
+## Scripts (quick reference)
 
-- Payments  
-- Interview mode  
-- Templates  
+| Location   | Command        | Purpose              |
+| ---------- | -------------- | -------------------- |
+| `frontend` | `npm run dev`  | Vite dev server      |
+| `frontend` | `npm run build`| Typecheck + production bundle |
+| `backend`  | `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` | API with reload |
 
-### Phase 3
+## License
 
-- Simulation  
-- Incident mode  
-- Diff view  
-
-### Phase 4
-
-- Collaboration  
-- Cost engine  
-- Code generation  
-
----
-
-## 14. ⚠️ Risks
-
-- AI output quality  
-- UX complexity  
-- Infrastructure cost  
-
----
-
-## 15. 🚀 MVP Definition of Done
-
-- Login functional  
-- Canvas functional  
-- Save/load functional  
-- AI feedback functional  
-
----
-
-## 16. 🧨 Competitive Strategy
-
-You DO NOT win by:
-
-- Having a canvas ❌  
-- Having AI ❌  
-
-You win by:
-
-👉 **Simulating real engineering experience**
-
----
-
-## 17. 🔥 Final Founder Insight
-
-If executed well:
-
-👉 This becomes:
-
-**“LeetCode for System Design + Real-world Simulation Platform”**
-
----
+Add a `LICENSE` file when you publish the project.
